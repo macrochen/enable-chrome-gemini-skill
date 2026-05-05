@@ -134,15 +134,74 @@ open -a "Google Chrome"
 
 `chmod +x ~/bin/chrome-gemini`，确保 `~/bin` 在 PATH 中。
 
-### 第五步：Alfred 工作流（可选）
+### 第五步：Alfred 工作流（可选，推荐）
 
-将 wrapper 脚本包装为 Alfred 工作流：
+Alfred 工作流是最佳方案，每次启动前自动修改配置。
 
 1. 创建 `run.sh`（内容同 wrapper 脚本）
-2. `info.plist` 中 Script Action 使用 `scriptfile=run.sh`、`type=0`（外部脚本），**不要内嵌脚本到 plist XML**（`>`、`&` 等字符的 XML 转义会出问题）
+2. **用 Python plistlib 生成 `info.plist`**（避免 XML 转义问题）
 3. 关键词设为 `cg`，用 `cg check` 检查状态
-4. 打包：`zip -r Chrome-Gemini.alfredworkflow info.plist run.sh`
+4. 打包：`zip -r Chrome-Gemini.alfredworkflow info.plist`
 5. 双击 `.alfredworkflow` 文件安装
+
+**关键：必须用 `plistlib` 生成 plist，不能手写 XML。**
+
+```python
+import plistlib
+
+with open('run.sh', 'r') as f:
+    script_content = f.read()
+
+plist = {
+    'bundleid': 'com.macrochen.chrome-gemini',
+    'name': 'Chrome Gemini',
+    'objects': [
+        {
+            'config': {'argumenttype': 1, 'keyword': 'cg', 'text': 'Chrome Gemini', 'withspace': True},
+            'type': 'alfred.workflow.input.keyword',
+            'uid': 'DEADBEEF-0001-0001-0001-000000000001',
+            'version': 1
+        },
+        {
+            'config': {
+                'script': script_content,   # 脚本内嵌
+                'scriptfile': '',            # 留空
+                'scriptargtype': 1,
+                'type': 0,                   # bash
+                'concurrently': False,
+                'escaping': 0
+            },
+            'type': 'alfred.workflow.action.script',
+            'uid': 'DEADBEEF-0001-0001-0001-000000000002',
+            'version': 2
+        }
+    ],
+    'connections': {
+        'DEADBEEF-0001-0001-0001-000000000001': [
+            {'destinationuid': 'DEADBEEF-0001-0001-0001-000000000002', 'modifiers': 0, 'modifiersubtext': '', 'vitoclose': False}
+        ],
+        'DEADBEEF-0001-0001-0001-000000000002': []
+    },
+    'uidata': {
+        'DEADBEEF-0001-0001-0001-000000000001': {'xpos': 100, 'ypos': 200},
+        'DEADBEEF-0001-0001-0001-000000000002': {'xpos': 350, 'ypos': 200}
+    },
+    'userconfigurationconfig': [],
+    'variables': {},
+    'version': '1.0.0',
+    'description': 'Chrome Gemini 启动器',
+    'readme': '用法: cg → 启动, cg check → 检查状态',
+    'disabled': False,
+    'webaddress': '',
+    'category': 'Tools',
+    'createdby': 'macrochen'
+}
+
+with open('info.plist', 'wb') as f:
+    plistlib.dump(plist, f, sort_keys=True)
+```
+
+然后打包：`zip -r Chrome-Gemini.alfredworkflow info.plist`（不需要 run.sh）。
 
 ### 第六步：故障恢复
 
@@ -157,12 +216,19 @@ cp "$LOCAL_STATE".backup.YYYYMMDD_HHMMSS "$LOCAL_STATE"
 
 Chrome 每次启动会重置 `variations_safe_seed_*` 字段，需要启动前修改。Alfred 工作流是最佳方案。
 
-### plist 格式要求（Alfred 5）
+### plist 生成方式（Alfred 5）
 
-创建 `info.plist` + 外部 `run.sh`，打包为 `.alfredworkflow`（即 zip）。
+**必须用 Python `plistlib` 生成 plist**，不能手写 XML。
 
-关键字段：
-- keyword trigger 类型: `alfred.workflow.input.keyword`（不是 `alfred.workflow.trigger.keyword`）
+常见错误：
+- 手写 XML plist：`>`, `&`, `"` 等字符需要手动转义，极易出错
+- `scriptfile` 外部脚本：Alfred 安装 `.alfredworkflow` 时不打包外部文件，脚本会变成默认模板
+
+正确方案：用 `plistlib.dump()` 生成 plist，脚本内嵌到 `config.script` 字段，`scriptfile` 留空。
+
+### 关键字段
+
+- keyword trigger 类型: `alfred.workflow.input.keyword`
 - script action 类型: `alfred.workflow.action.script`
 - bash 脚本 `type`: 0，AppleScript `type`: 6
 - `scriptargtype`: 1 = argv，2 = {query}
@@ -170,15 +236,11 @@ Chrome 每次启动会重置 `variations_safe_seed_*` 字段，需要启动前�
 - 必须有 `userconfigurationconfig` 空数组
 - 必须有 `variables` 空 dict
 
-### XML 转义陷阱
-
-脚本中的 `>`, `&`, `"` 等字符在 plist XML 中需要转义。最简单的方案：**用外部脚本文件**（`scriptfile` 字段），不要内联脚本。
-
 ### 打包
 
 ```bash
 cd workflow_dir
-zip -r ~/Desktop/Chrome-Gemini.alfredworkflow info.plist run.sh
+zip -r ~/Desktop/Chrome-Gemini.alfredworkflow info.plist
 ```
 
 ## 常见陷阱
