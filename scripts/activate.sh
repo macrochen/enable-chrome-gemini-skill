@@ -1,15 +1,38 @@
 #!/bin/bash
-# 备份 Local State 文件
-cp ~/Library/Application\ Support/Google/Chrome/Local\ State ~/Library/Application\ Support/Google/Chrome/Local\ State.bak
+# Chrome Gemini 激活脚本
+# 必须在 Chrome 完全退出后运行（⌘Q）
 
-# 修改属性以开启 Gemini
-# 1. 开启资格开关
-sed -i '' 's/"is_glic_eligible":[[:space:]]*false/"is_glic_eligible":true/g' ~/Library/Application\ Support/Google/Chrome/Local\ State
+LOCAL_STATE="$HOME/Library/Application Support/Google/Chrome/Local State"
 
-# 2. 修改国家属性为美国
-sed -i '' 's/"variations_country":"cn"/"variations_country":"us"/g' ~/Library/Application\ Support/Google/Chrome/Local\ State
+if pgrep -x "Google Chrome" > /dev/null 2>&1; then
+    echo "❌ Chrome 正在运行，请先完全退出 Chrome（⌘Q）"
+    exit 1
+fi
 
-# 3. 强制覆盖地理位置一致性检测
-sed -i '' 's/"variations_permanent_consistency_country":[[:space:]]*\[\([^]]*\),[[:space:]]*"[^"]*"\]/"variations_permanent_consistency_country":[\1,"us"]/g' ~/Library/Application\ Support/Google/Chrome/Local\ State
+# 备份
+BACKUP="$LOCAL_STATE.backup.$(date +%Y%m%d_%H%M%S)"
+cp "$LOCAL_STATE" "$BACKUP"
+echo "✅ 已备份: $BACKUP"
 
-echo "Gemini 激活指令执行完毕。请重新启动 Chrome 观察效果。"
+# 修改配置
+python3 -c "
+import json
+path = '$LOCAL_STATE'
+with open(path, 'r') as f:
+    data = json.load(f)
+if 'glic' not in data:
+    data['glic'] = {}
+data['glic']['launcher_enabled'] = True
+data['glic']['multi_instance_enabled_by_tier'] = True
+data['browser']['variations_country'] = 'us'
+data['variations_country'] = 'us'
+data['variations_safe_seed_permanent_consistency_country'] = 'us'
+data['variations_safe_seed_session_consistency_country'] = 'us'
+if 'variations_permanent_consistency_country' in data:
+    data['variations_permanent_consistency_country'] = [data.get('variations_safe_seed_milestone', ''), 'us']
+with open(path, 'w') as f:
+    json.dump(data, f, ensure_ascii=False, indent=2)
+print('✅ 配置已更新')
+"
+
+echo "💡 重新打开 Chrome 即可使用 Gemini"
